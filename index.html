@@ -171,7 +171,11 @@ main.wrap{padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 2
 .chip .dot{width:9px;height:9px;border-radius:3px}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field>label,.lbl{font-size:.8rem;font-weight:600;color:var(--ink-2)}
-.inp{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:11px 12px;font-size:16px;min-height:44px}
+.inp{width:100%;min-width:0;max-width:100%;display:block;border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:11px 12px;font-size:16px;line-height:20px;min-height:44px;height:44px;margin:0}
+input.inp[type="date"]{-webkit-appearance:none;appearance:none;text-align:left}
+input.inp[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:20px}
+input.inp[type="date"]::-webkit-datetime-edit{padding:0;line-height:20px}
+input.inp[type="date"]::-webkit-calendar-picker-indicator{margin:0 0 0 6px;opacity:.6}
 .inp:focus{outline:2px solid var(--focus);outline-offset:0;border-color:transparent}
 .inp.money{font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
 .amount-big{display:flex;align-items:baseline;gap:8px;border-bottom:2px solid var(--line);padding:6px 2px}
@@ -180,7 +184,9 @@ main.wrap{padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 2
 .amount-big input:focus{outline:none}
 .amount-big:focus-within{border-color:var(--focus)}
 .form{display:flex;flex-direction:column;gap:16px}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:end}
+.acct-row.aside{border-top:1px dashed var(--line);margin-top:4px}
+.acct-row.aside .v{color:var(--ink-2)}
 .line-in{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line-2)}
 .line-in:first-child{border-top:0}
 .line-in .n{font-weight:600;min-width:0;display:flex;align-items:center;gap:8px}
@@ -499,7 +505,9 @@ function calc() {
   return _calc;
 }
 const acctTotal = k => calc().totals[k] || 0;
-const grandTotal = () => sum(ACCTS.map(a => acctTotal(a.k)));
+const COUNTED = ACCTS.filter(a => a.k !== 'charity');   // charity cash is set aside, not counted as Ethan's money
+const grandTotal = () => sum(COUNTED.map(a => acctTotal(a.k)));
+const endTotal = s => sum(COUNTED.map(a => s.end[a.k] || 0));
 const bucketBal = (k, b) => calc().bal[k][b] || 0;
 const snapOf = c => calc().snaps.find(s => s.c.id === c.id);
 
@@ -653,10 +661,11 @@ function acctLine(k) {
 }
 function viewHome() {
   const total = grandTotal();
-  const pos = ACCTS.map(a => Math.max(0, acctTotal(a.k)));
+  const pos = COUNTED.map(a => Math.max(0, acctTotal(a.k)));
   const posSum = pos.reduce((a, b) => a + b, 0) || 1;
-  const bar = ACCTS.map((a, i) => pos[i] > 0 ? `<span style="flex:${pos[i] / posSum};background:${a.color}" data-tip="${esc(a.name)}\n${plain(acctTotal(a.k))}"></span>` : '').join('');
-  const rows = ACCTS.map(a => `<button class="acct-row" data-act="openAcct" data-k="${a.k}"><span class="dot" style="background:${a.color}"></span><span style="min-width:0"><span class="nm">${a.name}</span><div class="bk">${esc(bankOf(a.k))}</div></span><span class="v">${money(acctTotal(a.k))}<small>${esc(acctLine(a.k))}</small></span>${I.chev}</button>`).join('');
+  const bar = COUNTED.map((a, i) => pos[i] > 0 ? `<span style="flex:${pos[i] / posSum};background:${a.color}" data-tip="${esc(a.name)}\n${plain(acctTotal(a.k))}"></span>` : '').join('');
+  const row = (a, line, cls = '') => `<button class="acct-row ${cls}" data-act="openAcct" data-k="${a.k}"><span class="dot" style="background:${a.color}"></span><span style="min-width:0"><span class="nm">${a.name}</span><div class="bk">${esc(bankOf(a.k))}</div></span><span class="v">${money(acctTotal(a.k))}<small>${esc(line)}</small></span>${I.chev}</button>`;
+  const rows = COUNTED.map(a => row(a, acctLine(a.k))).join('') + row(AN.charity, 'Set aside · not in total', 'aside');
   const alerts = lowAlerts().map(x => `<button class="alert" data-act="openAcct" data-k="${x.k}">${I.warn}<span>${x.k === 'expense' ? 'Expense spending money' : AN[x.k].name} is low: ${plain(x.v)} left (limit ${plain(x.low)})</span></button>`).join('');
   const c = openCycle();
   const bk = backupDue() ? `<button class="alert info" data-act="backup">${I.warn}<span>${S.settings.lastBackup ? 'Your last backup was ' + fdate(S.settings.lastBackup) + '.' : 'You haven’t backed up yet.'} Tap to save a backup.</span></button>` : '';
@@ -944,7 +953,7 @@ function viewInsights() {
     { name: 'Fun', color: 'var(--c-fun)', values: shown.map(s => s.spent.fun) },
     { name: 'Charity', color: 'var(--c-charity)', values: shown.map(s => s.spent.charity) }],
     tips: shown.map(s => `${span(s)}\nExpense ${plain(s.spent.expense)}\nFun ${plain(s.spent.fun)}\nCharity ${plain(s.spent.charity)}`) });
-  const totals = shown.map(s => sum(Object.values(s.end)));
+  const totals = shown.map(endTotal);
   const totalLine = lineChart({ labels, values: totals, color: 'var(--ink)', tips: shown.map((s, i) => `${span(s)}\nTotal ${plain(totals[i])}`) });
   const saved = shown.map(s => r2(s.end.savings - s.start.savings));
   const savedBars = barChart({ labels, series: [{ name: 'Saved', color: 'var(--c-savings)', values: saved }], tips: shown.map((s, i) => `${span(s)}\nAdded to savings ${plain(saved[i])}\nSavings balance ${plain(s.end.savings)}`) });
@@ -959,7 +968,7 @@ function viewInsights() {
   <section class="card"><div class="card-h"><h2>Earned per cycle</h2></div>${income}</section>
   <section class="card"><div class="card-h"><h2>Spending per cycle</h2></div>${legendHtml([{ name: 'Expense', color: 'var(--c-expense)' }, { name: 'Fun', color: 'var(--c-fun)' }, { name: 'Charity', color: 'var(--c-charity)' }])}${spend}</section>
   <section class="card"><div class="card-h"><h2>Cycle ${cur.n} expenses by category</h2></div>${catIds.length ? catIds.map(id => catBar(catName(id), cs.cat[id] || 0, +((cur.budget || {})[id]) || 0)).join('') : '<div class="empty">No expenses planned or logged yet.</div>'}<p class="hint" style="margin-top:8px">Bar = spent. Line = expected.</p></section>
-  <section class="card"><div class="card-h"><h2>Total money</h2><span class="sub">at the end of each cycle</span></div>${totalLine}</section>
+  <section class="card"><div class="card-h"><h2>Total money</h2><span class="sub">end of each cycle, excluding charity</span></div>${totalLine}</section>
   <section class="card"><div class="card-h"><h2>Emergency fund</h2></div>${emLine}</section>
   <section class="card"><div class="card-h"><h2>Added to savings</h2></div>${savedBars}</section>
   <section class="card"><div class="card-h"><h2>Fun spending</h2></div>${funBars}</section>
@@ -1446,7 +1455,7 @@ async function exportXlsx() {
     Account: t.t === 'xfer' ? AN.salary.name + ' → ' + AN[t.key].name : t.t === 'move' ? AN[t.fa].name + ' → ' + AN[t.ta].name : t.t === 'income' ? AN.salary.name : AN[t.acct] ? AN[t.acct].name : '',
     Detail: t.t === 'spend' || t.t === 'in' || t.t === 'adj' ? bucketLabel(t.acct, t.b || defaultBucket(t.acct)) : t.t === 'move' ? bucketLabel(t.fa, t.fb) + ' → ' + bucketLabel(t.ta, t.tb) : '',
     Amount: t.t === 'spend' ? -t.a : t.a, Note: t.note || '' }));
-  const cyc = calc().snaps.map(s => ({ Cycle: s.c.n, Start: s.c.start, End: s.c.end || 'open', Earned: s.income, Allocated: s.c.planned ? plannedTotal(s.c) : 0, 'Expense spending': s.spent.expense, 'Fun spending': s.spent.fun, 'Given to charity': s.spent.charity, 'Emergency fund at end': s.end.salary, 'Savings at end': s.end.savings, 'Total at end': sum(Object.values(s.end)) }));
+  const cyc = calc().snaps.map(s => ({ Cycle: s.c.n, Start: s.c.start, End: s.c.end || 'open', Earned: s.income, Allocated: s.c.planned ? plannedTotal(s.c) : 0, 'Expense spending': s.spent.expense, 'Fun spending': s.spent.fun, 'Given to charity': s.spent.charity, 'Emergency fund at end': s.end.salary, 'Savings at end': s.end.savings, 'Total at end (excl. charity)': endTotal(s) }));
   const bal = ACCTS.map(a => ({ Account: a.name, 'Bank or card': bankOf(a.k), Balance: acctTotal(a.k) }));
   const stamp = today();
   try {
